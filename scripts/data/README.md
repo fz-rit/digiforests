@@ -87,6 +87,45 @@ To aggregate individual point clouds and labels:
 python scripts/data/aggregate_clouds_and_labels.py /path/to/plot/folder /path/to/output/folder [--denoise] [--voxel-down-sample-size FLOAT]
 ```
 
+#### Example
+
+```bash
+# Process a specific experiment folder
+python scripts/data/aggregate_clouds_and_labels.py \
+  /home/fzhcis/data/DigiForests/digiforests-ground-c1/raw/val/2024-07/exp11-c1 \
+  /home/fzhcis/data/DigiForests/aggregate_outputs
+
+# Aggregate all ground clouds in the dataset with a dry run
+python scripts/data/aggregate_ground_clouds.py \
+  /home/fzhcis/data/DigiForests \
+  /home/fzhcis/data/DigiForests/aggregate_outputs \
+  --dry-run
+
+# Aggregate all ground clouds in the dataset with denoising and voxel downsampling (0.01m)
+python scripts/data/aggregate_ground_clouds.py \
+  /home/fzhcis/data/DigiForests \
+  /home/fzhcis/data/DigiForests/aggregate_outputs
+
+# Aggregate all ground clouds in the dataset without denoising
+python scripts/data/aggregate_ground_clouds.py \
+  /home/fzhcis/data/DigiForests \
+  /home/fzhcis/data/DigiForests/aggregate_outputs \
+  --no-denoise
+
+```
+
+Expected outputs:
+- grd_c1_val_2023_03_exp11_c1_aggr.ply
+- grd_c1_val_2023_10_exp11_c1_aggr.ply
+- grd_c1_val_2024_07_exp11_c1_aggr.ply
+- grd_d2_train_2023_03_exp20_d2_aggr.ply
+- grd_d2_train_2023_10_exp20_d2_aggr.ply
+- grd_d2_train_2024_07_exp20_d2_aggr.ply
+- grd_m1_train_2023_03_exp07_m1_aggr.ply
+- grd_m3_train_2023_03_exp06_m3_aggr.ply
+- grd_m4_train_2023_03_exp18_m4_aggr.ply
+- grd_m5_train_2023_03_exp09_m5_aggr.ply
+
 ## Advanced Usage
 
 ### Minkowski Engine Support

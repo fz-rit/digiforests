@@ -19,12 +19,19 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+import sys
+from pathlib import Path
+
+# Add src directory to path so digiforests_dataloader can be imported
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _SCRIPT_DIR.parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT / "src"))
+
 import typer
 import numpy as np
 import open3d as o3d
 from enum import Enum
 from tqdm import tqdm
-from pathlib import Path
 
 from digiforests_dataloader.utils.cloud import Cloud
 from digiforests_dataloader.utils.logging import logger, bar
@@ -69,11 +76,11 @@ def read_labels(label_folder: Path) -> dict[str, Labels]:
         data = np.fromfile(fp, dtype=np.uint32)
         # bits 0-7 correspond to semantic class
         semantic_labels = data & 0xFF
-        print("unique semantics", np.unique(semantic_labels))
+        # print("unique semantics", np.unique(semantic_labels))
         tree_mask = semantic_labels == Labels.From.TREE.value
         # bits 8-15 correspond to subtree class
         subsemantic_labels = (data >> 8) & 0xFF
-        print("unique subsemantics", np.unique(subsemantic_labels))
+        # print("unique subsemantics", np.unique(subsemantic_labels))
         stem_mask = np.logical_and(
             tree_mask, subsemantic_labels == Labels.From.STEM.value
         )
@@ -82,8 +89,8 @@ def read_labels(label_folder: Path) -> dict[str, Labels]:
         )
         semantic_labels[stem_mask] = Labels.To.STEM.value
         semantic_labels[canopy_mask] = Labels.To.CANOPY.value
-        print("unique semantics", np.unique(semantic_labels))
-        print("-------")
+        # print("unique semantics", np.unique(semantic_labels))
+        # print("-------")
         #
         # bits 16-31 correspond to instance
         instance_labels = data >> 16
@@ -101,7 +108,7 @@ def read_poses(pose_file: Path) -> dict[str, np.ndarray]:
     with pose_file.open("r") as file:
         next(file)  # skip the header line
         for line in file:
-            data = line.strip().split(", ")
+            data = line.strip().split(",")
             sec_nsec = f"{int(data[1])}_{int(data[2])}"
             pose = np.eye(4)
             pose[0, -1] = float(data[3])
@@ -176,6 +183,47 @@ def denoise_cloud(cloud: Cloud, voxel_size: float):
     return denoised_cloud
 
 
+def generate_output_filename(exp_folder: Path) -> str:
+    """
+    Generate output filename from experiment folder path.
+    
+    Example:
+        /path/to/digiforests-ground-c1/raw/val/2024-07/exp11-c1/
+        -> grd_c1_val_2024_07_exp11_c1_aggr.ply
+    """
+    parts = exp_folder.parts
+    # Find indices for the pattern: digiforests-ground-XX/raw/train_or_val/YYYY-MM/expNN-XX
+    dataset_type = None
+    plot_id = None
+    split = None
+    date = None
+    exp = None
+    
+    for i, part in enumerate(parts):
+        if part.startswith("digiforests-ground-"):
+            dataset_type = "grd"
+            plot_id = part.split("-")[-1]  # e.g., "c1"
+        elif part in ["train", "val"]:
+            split = part
+        elif len(part) == 7 and "-" in part:  # YYYY-MM format
+            date = part.replace("-", "_")
+        elif part.startswith("exp") and "-" in part:
+            exp = part  # e.g., "exp11-c1"
+            exp = exp.replace("-", "_")
+    
+    # Build filename
+    filename_parts = [dataset_type, plot_id]
+    if split:
+        filename_parts.append(split)
+    if date:
+        filename_parts.append(date)
+    if exp:
+        filename_parts.append(exp)
+    filename_parts.append("aggr.ply")
+    
+    return "_".join(filename_parts)
+
+
 @app.command()
 def aggregate(
     exp_folder: Path = typer.Argument(
@@ -189,6 +237,9 @@ def aggregate(
     ),
     voxel_down_sample_size: float = typer.Option(
         __VOXEL_SIZE__, help="Voxel down-sampling size for denoising the point cloud."
+    ),
+    output_filename: str = typer.Option(
+        None, help="Custom output filename. If not provided, auto-generated from path."
     ),
 ):
     """
@@ -222,16 +273,25 @@ def aggregate(
     - The voxel down-sampling size affects the trade-off between detail and file size
     """
     scan_poses = read_poses(exp_folder / "poses.txt")
-    scans = read_scans(exp_folder / "individual_clouds")
+    scans = read_scans(exp_folder / "ground_clouds")
     labels = read_labels(exp_folder / "labels")
     combine_scan_and_labels(scans, labels)
     transformed_scans = transform_scans(scans, scan_poses)
     aggregated_cloud = aggregate_scans(transformed_scans)
+    
+    # Generate output filename if not provided
+    if output_filename is None:
+        output_filename = generate_output_filename(exp_folder)
+    
+    output_path = output_folder / output_filename
+    
     if denoise:
         denoised_cloud: Cloud = denoise_cloud(aggregated_cloud, voxel_down_sample_size)
-        denoised_cloud.write(output_folder / "aggregated_cloud.ply")
+        denoised_cloud.write(output_path)
+        logger.info(f"Saved denoised aggregated cloud to {output_path}")
     else:
-        aggregated_cloud.write(output_folder / "aggregated_cloud.ply")
+        aggregated_cloud.write(output_path)
+        logger.info(f"Saved aggregated cloud to {output_path}")
 
 
 if __name__ == "__main__":
